@@ -200,13 +200,15 @@ body{font-family:'Be Vietnam Pro',sans-serif;background:var(--sky);color:var(--i
 .ky22-cnt span{display:block;line-height:18px;transition:transform .45s cubic-bezier(.34,1.45,.64,1),opacity .3s}
 
 /* ===== #061 – Lightbox toàn màn hình ===== */
-#kylb-overlay{position:fixed;inset:0;z-index:70;background:#000a;display:flex;align-items:center;justify-content:center;animation:kylb-in .25s}
+#kylb-overlay{position:fixed;inset:0;z-index:70;background:#000a;display:flex;align-items:center;justify-content:center;animation:kylb-in .25s;touch-action:none;user-select:none;-webkit-user-select:none}
 @keyframes kylb-in{from{opacity:0}}
-#kylb-overlay img{max-width:100%;max-height:100%;object-fit:contain;transition:transform .4s cubic-bezier(.2,.8,.2,1)}
-#kylb-overlay button{position:absolute;background:rgba(0,0,0,.45);border:0;color:#fff;font-size:1.8rem;border-radius:50%;width:48px;height:48px;display:grid;place-items:center;cursor:pointer}
+#kylb-overlay img{max-width:100%;max-height:100%;object-fit:contain;transform-origin:center center;will-change:transform;transition:transform .28s cubic-bezier(.2,.8,.2,1)}
+#kylb-overlay.zoomed img{cursor:grab}
+#kylb-overlay.zoomed.is-drag img{cursor:grabbing}
+#kylb-overlay button{position:absolute;z-index:2;background:rgba(0,0,0,.45);border:0;color:#fff;font-size:1.8rem;border-radius:50%;width:48px;height:48px;display:grid;place-items:center;cursor:pointer}
 #kylb-prev{left:12px}#kylb-next{right:12px}#kylb-close{top:14px;right:14px;font-size:1.3rem}
-#kylb-overlay .kylb-zoom-label{position:absolute;top:14px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.4);color:#fff;font-size:12px;font-weight:700;padding:4px 10px;border-radius:999px;opacity:0;transition:opacity .3s}
-#kylb-overlay.zoomed .kylb-zoom-label{opacity:1}
+#kylb-overlay .kylb-zoom-label{position:absolute;top:14px;left:50%;transform:translateX(-50%);z-index:2;background:rgba(0,0,0,.55);color:#fff;font-size:12px;font-weight:700;padding:5px 12px;border-radius:999px;opacity:0;pointer-events:none;cursor:pointer;transition:opacity .25s}
+#kylb-overlay.zoomed .kylb-zoom-label{opacity:1;pointer-events:auto}
 
 /* ===== #032/#075 – Drop zone nâng cấp ===== */
 .kydrop{position:relative;border-radius:20px;background:#fff;border:2px dashed rgba(29,42,74,.3);text-align:center;padding:20px 16px;cursor:pointer;transition:transform .4s cubic-bezier(.34,1.45,.64,1),background .3s,border-color .3s}
@@ -236,6 +238,7 @@ body{font-family:'Be Vietnam Pro',sans-serif;background:var(--sky);color:var(--i
 .kyst-bar{position:relative;display:flex;gap:2px;height:24px;border-radius:6px;overflow:hidden;margin:8px 0 4px}
 .kyst-seg{flex:none;height:100%;transition:width .9s cubic-bezier(.22,.9,.24,1),opacity .3s;width:0}
 .kyst-seg.loaded{width:var(--w)}
+.kyst-seg.loaded[data-has="1"]{min-width:6px}
 .kyst-seg:first-child{border-radius:6px 0 0 6px}
 .kyst-seg:last-child{flex:1;border-radius:0 6px 6px 0;background:rgba(29,42,74,.08)}
 .kyst-legend{display:flex;flex-wrap:wrap;gap:4px 10px;margin-top:6px}
@@ -440,10 +443,15 @@ async function uploadImage(file,{crop=false,size=256,onProgress=()=>{},btn=null,
   }
 }
 const upload=(file,onp)=>uploadImage(file,{onProgress:onp});
-function embed(u){let m;
-  if(m=u.match(/(?:youtu\.be\/|v=|shorts\/)([\w-]{11})/))return`https://www.youtube.com/embed/${m[1]}`;
-  if(m=u.match(/drive\.google\.com\/file\/d\/([\w-]+)/))return`https://drive.google.com/file/d/${m[1]}/preview`;
-  if(m=u.match(/tiktok\.com\/.*video\/(\d+)/))return`https://www.tiktok.com/embed/v2/${m[1]}`;return null}
+function parseVideo(u){
+  const s=String(u??"").trim();if(!s)return null;let m;
+  if(m=s.match(/(?:youtu\.be\/|v=|shorts\/|embed\/|live\/)([\w-]{11})/))return{type:"youtube",src:`https://www.youtube.com/embed/${m[1]}?playsinline=1&rel=0`,raw:s};
+  if(m=s.match(/drive\.google\.com\/(?:file\/d\/|open\?.*?id=|uc\?.*?id=)([\w-]+)/))return{type:"drive",src:`https://drive.google.com/file/d/${m[1]}/preview`,raw:s};
+  if(m=s.match(/tiktok\.com\/.*video\/(\d+)/))return{type:"tiktok",src:`https://www.tiktok.com/embed/v2/${m[1]}`,raw:s};
+  if(/^https:\/\/[^\s?#]+\.(?:mp4|webm|mov|m4v)(?:[?#][^\s]*)?$/i.test(s))return{type:"direct",src:s,raw:s};
+  return null;
+}
+const embed=u=>parseVideo(u)?.src||null;
 async function cropSquare(file,size=256){
   let src,w,h,cleanup=()=>{};
   try{
@@ -505,6 +513,8 @@ const isClassCreator=c=>!!(c&&!c.ownerMemberId&&c.devId&&c.devId===devId);
 const isClassOwnerMember=c=>!!(c&&c.ownerMemberId&&store("me_"+c.id)===c.ownerMemberId);
 const isClassPassAuthed=cid=>sStore("mod_"+cid)==="1";
 const canMod=cid=>{const c=get("classes",cid);return isAdmin()||isClassOwnerMember(c)||isClassPassAuthed(cid)||isClassCreator(c)};
+const isClassMember=cid=>{const mid=store("me_"+cid);const m=mid?get("members",mid):null;return!!(m&&m.classId===cid)};
+const isClassInsider=cid=>canMod(cid)||isClassMember(cid);
 const canMem=m=>isAdmin()||sessionStorage.getItem("pin_"+m.id)==="1"||canMod(m.classId);
 const canViewLikers=m=>!!m&&(isAdmin()||sessionStorage.getItem("pin_"+m.id)==="1");
 const getActorMemberId=cid=>{
@@ -699,10 +709,10 @@ async function route(){
   if(h[0]==="s")A.innerHTML=schoolPage(h[1]);
   else if(h[0]==="c"){A.innerHTML=classPage(h[1]);bindClass(h[1]);const c=get("classes",h[1]);if(c?.music)setTrack(0,c.music)}
   else if(h[0]==="m")A.innerHTML=memberPage(h[1]);
-  else if(h[0]==="admin")A.innerHTML=adminPage();
+  else if(h[0]==="admin"){A.innerHTML=adminPage();if(isAdmin())initStorageBar()}
   else{A.innerHTML=homePage();countUp();initFan()}
   $$("[data-search]").forEach(searchBind)}
-addEventListener("hashchange",route);
+addEventListener("hashchange",()=>window.route());
 
 /* ============ TRANG CHỦ ============ */
 function homePage(){
@@ -816,7 +826,15 @@ function initFan(){
   place();
 }
 
-function countUp(){$$("[data-n]").forEach(e=>{const n=+e.dataset.n;let c=0;const t=setInterval(()=>{c+=Math.ceil(n/30);if(c>=n){c=n;clearInterval(t)}e.textContent=c},30)})}
+function countUp(){
+  const rm=window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+  $$("[data-n]").forEach(e=>{
+    const n=+e.dataset.n||0;
+    if(n<=0||rm){e.textContent=n;return}
+    let c=0;e.textContent=0;
+    const t=setInterval(()=>{c+=Math.ceil(n/30);if(c>=n){c=n;clearInterval(t)}e.textContent=c},30);
+  });
+}
 
 /* ============ TRANG TRƯỜNG ============ */
 let yearF="";
@@ -849,14 +867,14 @@ function showInvite(c){const l=inviteLink(c);sheet(`<h3 class="hand text-3xl">Đ
   <button class="btn w-full mt-3" onclick="copy('${l}',this)">Sao chép link mời</button><a class="btn sun w-full block text-center mt-2" href="#/c/${c.id}" onclick="closeSheet()">Vào lớp</a>`)}
 
 /* ============ TRANG LỚP ============ */
-function classPage(id){const c=get("classes",id);if(!c)return"<p>Không tìm thấy lớp.</p>";const s=get("schools",c.schoolId),mod=canMod(id);
+function classPage(id){const c=get("classes",id);if(!c)return"<p>Không tìm thấy lớp.</p>";const s=get("schools",c.schoolId),mod=canMod(id),insider=isClassInsider(id);
   const delPending=c.deleteReq?.status==="pending",st=delPending?calcDeleteVote(c):null,myMid=store("me_"+id),myMem=myMid?get("members",myMid):null,myVoted=!!(delPending&&myMem&&c.deleteReq.votes?.[myMid]);
   const delBanner=delPending?`<div class="card p-3 mb-3 flex items-center justify-between gap-2 flex-wrap" style="box-shadow:none;border-color:var(--coral);background:#fff5f6"><div class="text-xs sm:text-sm"><b style="color:var(--coral)">⚠️ Đang có yêu cầu xóa lớp</b> <span class="opacity-80">Đồng ý: <b>${st.yes}/${st.total} (${st.yesPct}%)</b> · cần 60%</span></div>${myMem?(myVoted?`<span class="text-xs font-bold px-2.5 py-1 rounded-full" style="background:#d1fae5;color:#065f46">✔ Bạn đã bỏ phiếu</span>`:`<button type="button" class="btn text-xs" style="background:var(--coral)" onclick="openDeleteVoteModal('${id}','${myMid}')">Biểu quyết ngay</button>`):""}</div>`:"";
   return`${crumbs([["Trang chủ","#/"],[s?.name||"","#/s/"+c.schoolId],[c.name]])}
-  ${c.cover?`<div class="mb-3 rounded-2xl overflow-hidden border-2 border-[var(--ink)] bg-white h-36 sm:h-44 shadow"><img loading="lazy" src="${esc(opt(c.cover,900))}" class="w-full h-full object-cover" onload="this.style.filter='none'" onerror="this.style.filter='none'" style="filter:blur(10px);transition:filter .5s" alt="Ảnh bìa lớp ${esc(c.name)}"></div>`:""}
+  ${c.cover?`<div class="relative mb-3 rounded-2xl overflow-hidden border-2 border-[var(--ink)] bg-slate-900/5 shadow cursor-zoom-in group" onclick="viewClassCover('${c.id}')"><img src="${esc(opt(c.cover,400))}" aria-hidden="true" class="absolute inset-0 w-full h-full object-cover blur-xl scale-110 opacity-35 pointer-events-none" alt=""><img loading="lazy" src="${esc(opt(c.cover,1200))}" class="relative z-[1] w-full h-auto max-h-[360px] sm:max-h-[460px] object-contain mx-auto block" onload="this.style.filter='none'" onerror="this.style.filter='none'" style="filter:blur(10px);transition:filter .5s" alt="Ảnh bìa lớp ${esc(c.name)}"><span class="absolute bottom-2 right-2 z-[2] px-2.5 py-1 rounded-full text-xs font-bold text-white bg-black/50 backdrop-blur-sm pointer-events-none">🔍 Phóng to</span></div>`:""}
   ${head(`Lớp ${c.name}`,`${c.year}${c.note?" · "+c.note:""}`)}
   ${delBanner}
-  <div class="flex gap-2 mb-3 flex-wrap items-center">${store("me_"+id)&&get("members",store("me_"+id))?`<button class="btn sun text-sm" onclick="goMe('${id}')">👤 Trang của tôi</button>`:""}<button class="btn ghost text-sm" onclick="enterCode('${id}')">🔑 Nhập mã lớp</button>${mod?`<button class="btn ghost text-sm" onclick="manage('${id}')">⚙ Quản lý lớp</button>`:""}<span id="class-auth-badge" class="text-xs font-bold px-2.5 py-1 rounded-full ${inClass(id)?"":"hidden"}" style="background:#d1fae5;color:#065f46">✔ Đã nhớ mã lớp (12h)</span></div>
+  ${insider?`<div class="flex gap-2 mb-3 flex-wrap items-center">${store("me_"+id)&&get("members",store("me_"+id))?`<button class="btn sun text-sm" onclick="goMe('${id}')">👤 Trang của tôi</button>`:""}<button class="btn ghost text-sm" onclick="enterCode('${id}')">🔑 Nhập mã lớp</button>${mod?`<button class="btn ghost text-sm" onclick="manage('${id}')">⚙ Quản lý lớp</button>`:""}<span id="class-auth-badge" class="text-xs font-bold px-2.5 py-1 rounded-full ${inClass(id)?"":"hidden"}" style="background:#d1fae5;color:#065f46">✔ Đã nhớ mã lớp (12h)</span></div>`:""}
   <div id="kytabs-${id}" class="kytab-wrap mb-4">
     <div class="kytab-bar">
       <button class="kytab-btn" data-t="0">Tập thể lớp</button>
@@ -896,14 +914,107 @@ function dropZoneHtml(dropId,fileId,upId,label="Kéo thả hoặc chọn nhiều
     <ul class="kyup-list" id="${upId}"></ul>
   </div>`}
 
+function renderVideoBox(x,mod){
+  const v=parseVideo(x.url);
+  if(!v)return`<div class="mb-4 card p-3 text-xs flex justify-between items-center"><span>Link video không hợp lệ</span>${mod?`<button type="button" class="underline" onclick="delItem('videos','${x.id}','video')">xóa</button>`:""}</div>`;
+  const frameCls=v.type==="drive"?"min-h-[300px] aspect-[4/3] sm:aspect-video sm:min-h-0":v.type==="tiktok"?"aspect-[9/16] max-w-[340px] mx-auto":"aspect-video";
+  const player=v.type==="direct"
+    ?`<video class="w-full h-full object-contain bg-black" controls playsinline preload="metadata" src="${esc(v.src)}"></video>`
+    :`<iframe class="w-full h-full border-0" loading="lazy" src="${esc(v.src)}" allowfullscreen allow="autoplay; encrypted-media; fullscreen; picture-in-picture" referrerpolicy="strict-origin-when-cross-origin"></iframe>`;
+  const origLink=(v.type==="drive"||v.type==="tiktok")?`<a href="${esc(x.url)}" target="_blank" rel="noopener" class="text-xs font-bold px-2.5 py-1 rounded-full bg-white border border-slate-300 hover:bg-slate-50">↗ Mở gốc</a>`:"";
+  return`<div class="mb-4 relative">
+    <div class="vw ${frameCls} bg-black rounded-xl overflow-hidden" data-vtype="${v.type}">${player}</div>
+    <div class="flex items-center justify-between gap-2 mt-1.5 px-1">
+      <div class="flex items-center gap-2 flex-wrap">
+        <button type="button" class="text-xs font-bold px-2.5 py-1 rounded-full bg-white border border-[var(--ink)] hover:bg-yellow-50" onclick="openVideoModal('${x.id}')">⛶ Xem phóng to</button>
+        ${origLink}
+      </div>
+      ${mod?`<button type="button" class="text-xs underline" onclick="delItem('videos','${x.id}','video')">xóa</button>`:""}
+    </div>
+  </div>`;
+}
+
 function groupTab(id){const ph=by("photos","classId",id).filter(p=>!p.memberId),vd=by("videos","classId",id),nt=by("notes","classId",id).sort((a,b)=>b.ts-a.ts);
-  return`<h2 class="hand text-3xl mb-2">Ảnh lớp</h2>
-  ${dropZoneHtml("drop","fi","up")}
+  const insider=isClassInsider(id);
+  const totalClassHearts=ph.reduce((sum,p)=>sum+(Number(p.hearts)||0),0),allowClassLikers=canMod(id);
+  const heartSvg=`<svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="#ff3b5c" aria-hidden="true"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>`;
+  const badgeCls="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white border-2 border-[var(--ink)] font-bold text-xs sm:text-sm whitespace-nowrap shrink-0";
+  const classHeartBadge=allowClassLikers
+    ?`<button type="button" onclick="showClassLikers('${id}')" class="${badgeCls} cursor-pointer hover:bg-rose-50 transition-colors" title="Xem người đã thả tim ảnh lớp">${heartSvg}<span id="class-total-hearts">${totalClassHearts}</span></button>`
+    :`<div class="${badgeCls} cursor-default">${heartSvg}<span id="class-total-hearts">${totalClassHearts}</span></div>`;
+  return`<div class="flex items-center justify-between gap-2 mb-2"><h2 class="hand text-3xl">Ảnh lớp</h2>${classHeartBadge}</div>
+  ${insider?dropZoneHtml("drop","fi","up"):""}
   <div class="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-6">${ph.map(p=>polaroid(p)).join("")||"<p class='col-span-3'>Chưa có ảnh.</p>"}</div>
-  <h2 class="hand text-3xl mb-2">Video lớp</h2>${vd.map(x=>`<div class="mb-3 relative"><div class="vw aspect-video bg-black rounded-xl overflow-hidden"><iframe class="w-full h-full" loading="lazy" src="${embed(x.url)}" allowfullscreen allow="autoplay;encrypted-media"></iframe></div>${canMod(id)?`<button class="text-xs underline" onclick="delItem('videos','${x.id}','video')">xóa</button>`:""}</div>`).join("")}
-  <div class="flex gap-2 mb-6"><input id="vu" class="inp" placeholder="Dán link YouTube / Drive / TikTok"><button class="btn" onclick="addVideo('${id}')">Thêm</button></div>
-  <h2 class="text-center" style="font-family:Pacifico;font-size:2rem">Những Lời Nhắn Nhủ</h2><div style="width:64px;height:4px;border-radius:4px;margin:6px auto 18px;background:linear-gradient(90deg,var(--ink),var(--coral))"></div><div class="card p-3 mb-3">${field("gn","Tên bạn / thầy cô")}<textarea id="gt" class="inp mb-2" rows="3" placeholder="Viết lời nhắn…"></textarea><button id="gs" class="btn sun plane" onclick="addNote('${id}',this)">✈ Gửi lưu bút</button></div>
-  <div class="grid grid-cols-2 sm:grid-cols-3 gap-5 mt-4">${nt.map(n=>stk(n,canMod(id))).join("")||"<p class='col-span-3 text-center'>Hãy là người viết lời nhắn đầu tiên.</p>"}</div>`}
+  <h2 class="hand text-3xl mb-2">Video lớp</h2>${vd.length?vd.map(x=>renderVideoBox(x,canMod(id))).join(""):`<p class="mb-6 text-sm opacity-70">Chưa có video.</p>`}
+  ${insider?`<div class="flex gap-2 mb-6"><input id="vu" class="inp" placeholder="Dán link YouTube / Drive / TikTok / .mp4"><button class="btn" onclick="addVideo('${id}')">Thêm</button></div>`:""}
+  <h2 class="text-center" style="font-family:Pacifico;font-size:2rem">Những Lời Nhắn Nhủ</h2><div style="width:64px;height:4px;border-radius:4px;margin:6px auto 18px;background:linear-gradient(90deg,var(--ink),var(--coral))"></div>${insider?`<div class="card p-3 mb-3">${field("gn","Tên bạn / thầy cô")}<textarea id="gt" class="inp mb-2" rows="3" placeholder="Viết lời nhắn…"></textarea><button id="gs" class="btn sun plane" onclick="addNote('${id}',this)">✈ Gửi lưu bút</button></div>`:""}
+  <div class="grid grid-cols-2 sm:grid-cols-3 gap-5 mt-4">${nt.map(n=>stk(n,canMod(id))).join("")||`<p class='col-span-3 text-center'>${insider?"Hãy là người viết lời nhắn đầu tiên.":"Chưa có lời nhắn nào."}</p>`}</div>`}
+
+window.showClassLikers=cid=>{
+  if(!canMod(cid))return;
+  const c=get("classes",cid);
+  const ph=by("photos","classId",cid).filter(p=>!p.memberId);
+  const totalClassHearts=ph.reduce((sum,p)=>sum+(Number(p.hearts)||0),0);
+  const memberMap=new Map(),guestMap=new Map();
+  let extraStranger=0;
+  ph.forEach(p=>{
+    let entries=[];
+    if(Array.isArray(p.likeLog)&&p.likeLog.length){
+      entries=p.likeLog;
+    }else if(Array.isArray(p.likedBy)&&p.likedBy.length){
+      const memIds=p.likedBy.filter(k=>String(k).startsWith("mem:")).map(k=>String(k).slice(4));
+      const devIds=p.likedBy.filter(k=>String(k).startsWith("dev:")).map(k=>String(k).slice(4));
+      memIds.forEach(mid=>entries.push({dev:"",mid,ts:0}));
+      const extraDevs=Math.max(0,devIds.length-memIds.length);
+      for(let i=0;i<extraDevs;i++)entries.push({dev:devIds[i]||"",mid:null,ts:0});
+    }
+    entries.forEach(e=>{
+      const u=e?.mid?get("members",e.mid):null;
+      const ts=Number(e?.ts)||0;
+      if(u){
+        const cur=memberMap.get(u.id)||{member:u,count:0,ts:0};
+        cur.count+=1;cur.ts=Math.max(cur.ts,ts);
+        memberMap.set(u.id,cur);
+      }else{
+        const gk=e?.dev?("dev:"+e.dev):("anon:"+p.id);
+        const cur=guestMap.get(gk)||{count:0,ts:0};
+        cur.count+=1;cur.ts=Math.max(cur.ts,ts);
+        guestMap.set(gk,cur);
+      }
+    });
+    const pHearts=Number(p.hearts)||0;
+    if(pHearts>entries.length)extraStranger+=(pHearts-entries.length);
+  });
+  const memberList=[...memberMap.values()].sort((a,b)=>(b.ts-a.ts)||(b.count-a.count));
+  const guestTotal=[...guestMap.values()].reduce((s,g)=>s+g.count,0)+extraStranger;
+  const listHtml=totalClassHearts===0&&!memberList.length&&!guestTotal
+    ?`<p class="text-sm text-center opacity-70 py-4">Chưa có lượt thả tim nào.</p>`
+    :`<div class="flex flex-col gap-2 max-h-[60vh] overflow-y-auto">
+      ${memberList.map(({member:u,count})=>{
+        const clsName=get("classes",u.classId)?.name||"";
+        const ini=esc((u.name||"?").trim().charAt(0).toUpperCase()||"?");
+        return`<a href="#/m/${u.id}" onclick="closeSheet()" class="flex items-center gap-3 p-2.5 rounded-xl bg-white border border-slate-200 hover:bg-yellow-50 transition-colors">
+          <div class="w-10 h-10 rounded-full overflow-hidden bg-slate-100 border border-slate-200 shrink-0 flex items-center justify-center font-bold text-slate-500">${u.avatar?`<img src="${esc(opt(u.avatar,120))}" class="w-full h-full object-cover object-top" alt="${esc(u.name)}">`:ini}</div>
+          <div class="flex-1 min-w-0">
+            <div class="font-bold text-sm text-[var(--ink)] truncate">${esc(u.name)}</div>
+            ${clsName?`<div class="text-xs opacity-60 truncate">Lớp ${esc(clsName)}</div>`:""}
+          </div>
+          ${count>1?`<span class="text-xs font-bold px-2 py-0.5 rounded-full shrink-0" style="color:#ff3b5c;background:#fff1f3">❤ ${count}</span>`:`<span class="text-sm shrink-0" style="color:#ff3b5c">❤</span>`}
+        </a>`;
+      }).join("")}
+      ${guestTotal>0?`<div class="flex items-center gap-3 p-2.5 rounded-xl bg-slate-50 border border-slate-200/80">
+        <div class="w-10 h-10 rounded-full bg-slate-200 text-slate-500 flex items-center justify-center shrink-0">
+          <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        </div>
+        <div class="flex-1 min-w-0">
+          <div class="font-bold text-sm text-[var(--ink)]">Người Lạ</div>
+          <div class="text-xs opacity-60">Khách chưa đăng nhập</div>
+        </div>
+        ${guestTotal>1?`<span class="text-xs font-bold px-2 py-0.5 rounded-full shrink-0" style="color:#ff3b5c;background:#fff1f3">❤ ${guestTotal}</span>`:`<span class="text-sm shrink-0" style="color:#ff3b5c">❤</span>`}
+      </div>`:""}
+    </div>`;
+  sheet(`<h3 class="hand text-3xl mb-3">Người đã thả tim ảnh lớp (❤ ${totalClassHearts})</h3>${listHtml}`);
+};
 
 window.goMe=cid=>{tab=1;window.redraw();const el=$(`[data-mid="${store("me_"+cid)}"]`);if(el){el.scrollIntoView({behavior:"smooth",block:"center"});el.animate([{transform:"scale(1.1)",background:"#ffd23f"},{transform:"scale(1)"}],{duration:700})}};
 
@@ -964,8 +1075,8 @@ function memberTab(id){const ms=by("members","classId",id),cls=get("classes",id)
 
 function after(id){
   const fi=$("#fi"),dr=$("#drop");
-  if(dr){
-    dr.onclick=e=>{if(!e.target.closest("#up"))fi?.click()};
+  if(dr&&fi){
+    dr.onclick=e=>{if(!e.target.closest("#up"))fi.click()};
     dr.ondrop=e=>{e.preventDefault();ups([...e.dataTransfer.files],id,null);dr.classList.remove("is-over")};
     dr.ondragenter=e=>{e.preventDefault();dr.classList.add("is-over")};
     dr.ondragleave=()=>dr.classList.remove("is-over");
@@ -975,6 +1086,7 @@ function after(id){
 
 async function ups(files,cid,mid){
   if(!files.length)return;
+  if(!mid&&!isClassInsider(cid))return toastErr("Chỉ thành viên hoặc quản lý lớp mới có quyền thực hiện.");
   if(!mid&&!inClass(cid))return enterCode(cid);
   const dr=$("#drop"),box=$("#up");if(!box)return;
   box.innerHTML="";
@@ -1016,8 +1128,8 @@ async function ups(files,cid,mid){
   }
 }
 
-window.addVideo=async cid=>{if(!inClass(cid))return enterCode(cid);const u=v("vu");if(!embed(u))return toast("Link video không hợp lệ");await db.set("videos",{id:uid(),classId:cid,url:u});redraw()};
-window.addNote=async(cid,b)=>{if(!inClass(cid))return enterCode(cid);const a=v("gn"),t=v("gt");if(!a||!t)return toast("Nhập tên và lời nhắn");b.classList.add("fly");await new Promise(r=>setTimeout(r,700));await db.set("notes",{id:uid(),classId:cid,author:a,text:t,ts:Date.now()});redraw()};
+window.addVideo=async cid=>{if(!isClassInsider(cid))return toastErr("Chỉ thành viên hoặc quản lý lớp mới có quyền thực hiện.");if(!inClass(cid))return enterCode(cid);const u=v("vu");if(!embed(u))return toast("Link video không hợp lệ");await db.set("videos",{id:uid(),classId:cid,url:u});redraw()};
+window.addNote=async(cid,b)=>{if(!isClassInsider(cid))return toastErr("Chỉ thành viên hoặc quản lý lớp mới có quyền thực hiện.");if(!inClass(cid))return enterCode(cid);const a=v("gn"),t=v("gt");if(!a||!t)return toast("Nhập tên và lời nhắn");b.classList.add("fly");await new Promise(r=>setTimeout(r,700));await db.set("notes",{id:uid(),classId:cid,author:a,text:t,ts:Date.now()});redraw()};
 
 /* ===== #061 – Lightbox toàn màn hình ===== */
 function bindGallery(){
@@ -1040,6 +1152,10 @@ function bindGallery(){
       const totEl=document.getElementById("member-total-hearts");
       if(totEl&&p.memberId){
         totEl.textContent=by("photos","memberId",p.memberId).reduce((sum,ph)=>sum+(Number(ph.hearts)||0),0);
+      }
+      const clsTotEl=document.getElementById("class-total-hearts");
+      if(clsTotEl&&!p.memberId){
+        clsTotEl.textContent=by("photos","classId",p.classId).filter(ph=>!ph.memberId).reduce((sum,ph)=>sum+(Number(ph.hearts)||0),0);
       }
     };
     try{
@@ -1087,37 +1203,209 @@ function bindGallery(){
 }
 
 function openLightbox(list,idx){
-  let i=idx,z=1,tx=0,ty=0,sx=0,sy=0,mode="";
-  function show(){
-    const p=list[i];if(!p)return;
-    const ov=document.getElementById("kylb-overlay");
-    const imgEl=ov.querySelector("img");
-    if(imgEl){imgEl.src=opt(p.url,1600);imgEl.style.transform=`translate(${tx}px,${ty}px) scale(${z})`}
-  }
-  if(document.getElementById("kylb-overlay")){document.getElementById("kylb-overlay").remove()}
-  const ov=document.createElement("div");ov.id="kylb-overlay";
-  ov.innerHTML=`<img src="${esc(opt(list[i].url,1600))}" alt="" style="max-width:92vw;max-height:92vh;border-radius:8px;user-select:none"><div class="kylb-zoom-label">2× zoom</div><button id="kylb-prev" aria-label="Trước">‹</button><button id="kylb-next" aria-label="Sau">›</button><button id="kylb-close" aria-label="Đóng">✕</button>`;
-  document.body.appendChild(ov);
-  const imgEl=ov.querySelector("img");
-  function go(d){i=(i+d+list.length)%list.length;z=1;tx=0;ty=0;imgEl.src=opt(list[i].url,1600);imgEl.style.transform=""}
-  document.getElementById("kylb-prev").onclick=e=>{e.stopPropagation();go(-1)};
-  document.getElementById("kylb-next").onclick=e=>{e.stopPropagation();go(1)};
-  document.getElementById("kylb-close").onclick=()=>ov.remove();
-  ov.onclick=e=>{if(e.target===ov)ov.remove()};
-  // Swipe to close / next / prev
-  ov.addEventListener("pointerdown",e=>{if(e.target.closest("button"))return;sx=e.clientX;sy=e.clientY;mode="wait";ov.setPointerCapture(e.pointerId)});
-  ov.addEventListener("pointermove",e=>{if(!mode)return;const dx=e.clientX-sx,dy=e.clientY-sy;if(mode==="wait"&&Math.hypot(dx,dy)>8)mode=Math.abs(dy)>Math.abs(dx)?"down":"side";if(mode==="down"){const d=Math.max(0,dy);ov.style.opacity=Math.max(0.2,1-d/300).toFixed(2);imgEl.style.transform=`translateY(${d}px) scale(${1-d/1600})`}});
-  ov.addEventListener("pointerup",e=>{if(!mode)return;const dx=e.clientX-sx,dy=e.clientY-sy,m=mode;mode="";imgEl.style.transform="";ov.style.opacity="";if(m==="down"&&dy>100)ov.remove();else if(m==="side"&&Math.abs(dx)>60)go(dx<0?1:-1)});
-  // Wheel zoom
-  ov.addEventListener("wheel",e=>{e.preventDefault();z=Math.max(1,Math.min(3,z*(e.deltaY<0?1.12:0.89)));imgEl.style.transform=`scale(${z})`;ov.classList.toggle("zoomed",z>1)},{passive:false});
-  // Double tap zoom
-  let lastTap=0;
-  imgEl.addEventListener("dblclick",()=>{z=z>1?1:2;imgEl.style.transform=z>1?`scale(${z})`:"";ov.classList.toggle("zoomed",z>1)});
-  // Keys
-  document.addEventListener("keydown",function kb(e){if(!document.getElementById("kylb-overlay")){document.removeEventListener("keydown",kb);return}if(e.key==="Escape")ov.remove();else if(e.key==="ArrowRight")go(1);else if(e.key==="ArrowLeft")go(-1)});
-}
+  if(!list||!list.length)return;
+  let i=idx,z=1,tx=0,ty=0;
+  const single=list.length<=1;
+  const pts=new Map();
+  let panLastX=0,panLastY=0,swipeStartX=0,swipeStartY=0,mode="",moved=false,lastTapTime=0,lastTapX=0,lastTapY=0,lastTouchDbl=0,lastPinchDist=0;
 
-function bindMini(){$$(".vw").forEach(w=>{const ph=w.parentElement;new IntersectionObserver(([e])=>{w.classList.toggle("mini",!e.isIntersecting&&e.boundingClientRect.top<0);ph.style.minHeight=w.classList.contains("mini")?ph.offsetHeight+"px":""},{threshold:.1}).observe(ph)})}
+  document.getElementById("kylb-overlay")?.remove();
+  const ov=document.createElement("div");ov.id="kylb-overlay";
+  ov.innerHTML=`<img src="${esc(opt(list[i].url,1600))}" alt="" draggable="false" style="max-width:92vw;max-height:92vh;border-radius:8px;user-select:none"><div class="kylb-zoom-label" role="button" tabindex="0">1.0× · Bấm để thu về 1×</div>${single?"":`<button id="kylb-prev" aria-label="Trước">‹</button><button id="kylb-next" aria-label="Sau">›</button>`}<button id="kylb-close" aria-label="Đóng">✕</button>`;
+  document.body.appendChild(ov);
+  const imgEl=ov.querySelector("img"),zLabel=ov.querySelector(".kylb-zoom-label");
+
+  function clamp(){
+    if(z<=1.01){tx=0;ty=0;return}
+    const maxX=Math.max(0,(imgEl.offsetWidth*z-ov.clientWidth)/2);
+    const maxY=Math.max(0,(imgEl.offsetHeight*z-ov.clientHeight)/2);
+    tx=Math.max(-maxX,Math.min(maxX,tx));
+    ty=Math.max(-maxY,Math.min(maxY,ty));
+  }
+  function applyTransform(smooth=false){
+    clamp();
+    imgEl.style.transition=smooth?"transform .28s cubic-bezier(.2,.8,.2,1)":"none";
+    imgEl.style.transform=`translate(${tx}px, ${ty}px) scale(${z})`;
+    const isZ=z>1.01;
+    ov.classList.toggle("zoomed",isZ);
+    if(zLabel)zLabel.textContent=`${z.toFixed(1)}× · Bấm để thu về 1×`;
+  }
+  function zoomAt(nextZ,clientX,clientY,smooth=false){
+    const nz=Math.max(1,Math.min(4.5,nextZ));
+    if(nz<=1.01){z=1;tx=0;ty=0;applyTransform(smooth);return}
+    const dx=clientX-ov.clientWidth/2;
+    const dy=clientY-ov.clientHeight/2;
+    tx=dx-(dx-tx)*(nz/z);
+    ty=dy-(dy-ty)*(nz/z);
+    z=nz;
+    applyTransform(smooth);
+  }
+  function resetZoom(smooth=true){z=1;tx=0;ty=0;applyTransform(smooth)}
+  function go(d){
+    if(list.length<=1)return;
+    i=(i+d+list.length)%list.length;
+    z=1;tx=0;ty=0;
+    imgEl.src=opt(list[i].url,1600);
+    ov.classList.remove("zoomed","is-drag");
+    applyTransform(false);
+  }
+  function closeLb(){
+    document.removeEventListener("keydown",kb);
+    ov.remove();
+  }
+  function kb(e){
+    if(!document.getElementById("kylb-overlay")){document.removeEventListener("keydown",kb);return}
+    if(e.key==="Escape")closeLb();
+    else if(!single&&e.key==="ArrowRight")go(1);
+    else if(!single&&e.key==="ArrowLeft")go(-1);
+  }
+
+  const prevBtn=document.getElementById("kylb-prev"),nextBtn=document.getElementById("kylb-next");
+  if(prevBtn)prevBtn.onclick=e=>{e.stopPropagation();go(-1)};
+  if(nextBtn)nextBtn.onclick=e=>{e.stopPropagation();go(1)};
+  document.getElementById("kylb-close").onclick=closeLb;
+  zLabel.onclick=e=>{e.stopPropagation();resetZoom(true)};
+  ov.onclick=e=>{if(moved){moved=false;return}if(e.target===ov)closeLb()};
+
+  ov.addEventListener("pointerdown",e=>{
+    if(e.target.closest("button, .kylb-zoom-label"))return;
+    pts.set(e.pointerId,{x:e.clientX,y:e.clientY});
+    try{ov.setPointerCapture(e.pointerId)}catch{}
+    if(pts.size===2){
+      mode="pinch";moved=true;
+      const [a,b]=[...pts.values()];
+      lastPinchDist=Math.hypot(b.x-a.x,b.y-a.y)||1;
+      ov.classList.remove("is-drag");
+    }else if(pts.size===1){
+      moved=false;
+      panLastX=e.clientX;panLastY=e.clientY;
+      swipeStartX=e.clientX;swipeStartY=e.clientY;
+      if(z>1.01){mode="pan";ov.classList.add("is-drag")}
+      else mode="wait";
+    }
+  });
+
+  ov.addEventListener("pointermove",e=>{
+    if(!pts.has(e.pointerId))return;
+    pts.set(e.pointerId,{x:e.clientX,y:e.clientY});
+    if(pts.size===2){
+      mode="pinch";moved=true;
+      const [a,b]=[...pts.values()];
+      const dist=Math.hypot(b.x-a.x,b.y-a.y)||1;
+      const midX=(a.x+b.x)/2,midY=(a.y+b.y)/2;
+      if(lastPinchDist>0)zoomAt(z*(dist/lastPinchDist),midX,midY,false);
+      lastPinchDist=dist;
+      return;
+    }
+    if(pts.size===1){
+      if(mode==="pan"||z>1.01){
+        const dx=e.clientX-panLastX,dy=e.clientY-panLastY;
+        panLastX=e.clientX;panLastY=e.clientY;
+        if(Math.hypot(e.clientX-swipeStartX,e.clientY-swipeStartY)>4)moved=true;
+        tx+=dx;ty+=dy;
+        applyTransform(false);
+        return;
+      }
+      const dx=e.clientX-swipeStartX,dy=e.clientY-swipeStartY;
+      if(mode==="wait"&&Math.hypot(dx,dy)>8){moved=true;mode=Math.abs(dy)>Math.abs(dx)?"down":"side"}
+      if(mode==="down"){
+        const d=Math.max(0,dy);
+        ov.style.opacity=Math.max(0.2,1-d/300).toFixed(2);
+        imgEl.style.transition="none";
+        imgEl.style.transform=`translateY(${d}px) scale(${1-d/1600})`;
+      }else if(mode==="side"&&!single){
+        imgEl.style.transition="none";
+        imgEl.style.transform=`translateX(${dx*0.45}px)`;
+      }
+    }
+  });
+
+  function onPointerEnd(e){
+    if(!pts.has(e.pointerId))return;
+    pts.delete(e.pointerId);
+    ov.classList.remove("is-drag");
+    if(pts.size===1){
+      const rem=[...pts.values()][0];
+      panLastX=rem.x;panLastY=rem.y;
+      mode=z>1.01?"pan":"";
+      lastPinchDist=0;
+      return;
+    }
+    if(pts.size===0){
+      const m=mode;mode="";lastPinchDist=0;
+      if(z>1.01||m==="pan"||m==="pinch"){
+        applyTransform(false);
+      }else{
+        const dx=e.clientX-swipeStartX,dy=e.clientY-swipeStartY;
+        ov.style.opacity="";
+        if(m==="down"&&dy>100){closeLb();return}
+        if(m==="side"&&!single&&Math.abs(dx)>60){go(dx<0?1:-1);return}
+        applyTransform(true);
+      }
+      if(e.type==="pointerup"&&e.pointerType!=="mouse"&&!moved&&m!=="pinch"){
+        const now=Date.now();
+        if(now-lastTapTime<300&&Math.hypot(e.clientX-lastTapX,e.clientY-lastTapY)<35){
+          lastTapTime=0;lastTouchDbl=now;
+          if(z>1.01)resetZoom(true);else zoomAt(2.5,e.clientX,e.clientY,true);
+        }else{
+          lastTapTime=now;lastTapX=e.clientX;lastTapY=e.clientY;
+        }
+      }
+      if(moved)setTimeout(()=>{moved=false},60);
+    }
+  }
+  ov.addEventListener("pointerup",onPointerEnd);
+  ov.addEventListener("pointercancel",onPointerEnd);
+
+  ov.addEventListener("wheel",e=>{
+    e.preventDefault();
+    zoomAt(z*(e.deltaY<0?1.15:0.87),e.clientX,e.clientY,false);
+  },{passive:false});
+
+  ov.addEventListener("dblclick",e=>{
+    if(e.target.closest("button, .kylb-zoom-label"))return;
+    if(Date.now()-lastTouchDbl<400)return;
+    if(z>1.01)resetZoom(true);else zoomAt(2.5,e.clientX,e.clientY,true);
+  });
+
+  document.addEventListener("keydown",kb);
+}
+window.viewClassCover=cid=>{const c=get("classes",cid);if(c?.cover)openLightbox([{url:c.cover}],0)};
+window.viewMemberAvatar=id=>{const m=get("members",id);if(m?.avatar)openLightbox([{url:m.avatar}],0)};
+
+window.openVideoModal=vid=>{
+  const x=get("videos",vid);if(!x)return;
+  const v=parseVideo(x.url);if(!v)return toastErr("Không thể mở video này.");
+  try{if(!au.paused)au.pause()}catch{}
+  document.getElementById("kyvlb-overlay")?.remove();
+  const ov=document.createElement("div");
+  ov.id="kyvlb-overlay";
+  ov.className="fixed inset-0 z-[75] bg-black/95 flex flex-col items-center justify-center p-2 sm:p-5";
+  const player=v.type==="direct"
+    ?`<video class="w-full h-full object-contain bg-black" controls autoplay playsinline src="${esc(v.src)}"></video>`
+    :`<iframe class="w-full h-full border-0" src="${esc(v.src)}" allowfullscreen allow="autoplay; encrypted-media; fullscreen; picture-in-picture" referrerpolicy="strict-origin-when-cross-origin"></iframe>`;
+  ov.innerHTML=`<div class="w-full max-w-5xl flex items-center justify-between gap-2 mb-2 px-1">
+    <a href="${esc(x.url)}" target="_blank" rel="noopener" class="text-xs sm:text-sm font-bold text-white/90 hover:text-white underline">↗ Mở link gốc</a>
+    <button type="button" id="kyvlb-close" class="px-3 py-1.5 rounded-full bg-white/15 hover:bg-white/25 text-white text-xs sm:text-sm font-bold border-0 cursor-pointer">✕ Đóng</button>
+  </div>
+  <div class="w-full max-w-5xl h-[78vh] sm:h-[85vh] bg-black rounded-2xl overflow-hidden shadow-2xl">${player}</div>`;
+  document.body.appendChild(ov);
+  const close=()=>{document.removeEventListener("keydown",onKey);ov.remove()};
+  const onKey=e=>{if(e.key==="Escape")close()};
+  document.addEventListener("keydown",onKey);
+  document.getElementById("kyvlb-close").onclick=close;
+  ov.onclick=e=>{if(e.target===ov)close()};
+};
+
+function bindMini(){
+  $$(".vw[data-vtype='youtube']").forEach(w=>{
+    const ph=w.parentElement;
+    new IntersectionObserver(([e])=>{
+      w.classList.toggle("mini",!e.isIntersecting&&e.boundingClientRect.top<0);
+      ph.style.minHeight=w.classList.contains("mini")?ph.offsetHeight+"px":"";
+    },{threshold:.1}).observe(ph);
+  });
+}
 
 /* ============ MÃ LỚP ============ */
 window.enterCode=cid=>{const c=get("classes",cid);if(!c)return toastErr("Không tìm thấy lớp.");
@@ -1165,6 +1453,31 @@ function confirmTransferClass(cid,target){
   };
 }
 
+async function updateSecretRecord({btn,errEl,ids,isPin,rec,col,plainKey,hashKey,okMsg}){
+  if(!btn||btn.disabled)return;
+  if(errEl){errEl.textContent="";errEl.classList.add("hidden")}
+  const showErr=msg=>{if(errEl){errEl.textContent=msg;errEl.classList.remove("hidden")}toastErr(msg)};
+  const prev=btn.innerHTML;btn.disabled=true;btn.textContent="Đang cập nhật...";
+  try{
+    const vals=ids.map(k=>($("#"+k)?.value||"").trim());
+    const [oldVal,newVal,newVal2]=vals;
+    if(!isAdmin()){
+      if(!oldVal)return showErr(isPin?"Vui lòng nhập mã PIN hiện tại.":"Vui lòng nhập mật khẩu hiện tại.");
+      const okOld=(rec[plainKey]&&rec[plainKey]===oldVal)||(rec[hashKey]&&rec[hashKey]===await sha(oldVal));
+      if(!okOld)return showErr(isPin?"Mã PIN hiện tại không đúng.":"Mật khẩu hiện tại không đúng.");
+    }
+    if(isPin&&!/^\d{4,6}$/.test(newVal))return showErr("Mã PIN mới phải gồm 4 đến 6 chữ số.");
+    if(!isPin&&newVal.length<4)return showErr("Mật khẩu mới phải có ít nhất 4 ký tự.");
+    if(newVal!==newVal2)return showErr(isPin?"Mã PIN nhập lại không khớp.":"Mật khẩu mới nhập lại không khớp.");
+    rec[hashKey]=await sha(newVal);
+    delete rec[plainKey];
+    await db.set(col,rec);
+    ids.forEach(k=>{const el=$("#"+k);if(el)el.value=""});
+    toast(okMsg);
+  }catch(e){showErr(e?.message||"Không thể cập nhật.")}
+  finally{if(btn.isConnected){btn.disabled=false;btn.innerHTML=prev}}
+}
+
 function ClassManagementModal(cid){
   const c=get("classes",cid);
   if(!c)return toastErr("Không tìm thấy dữ liệu lớp.");
@@ -1173,35 +1486,40 @@ function ClassManagementModal(cid){
     const byOwnerPin=!!owner;
     sheet(`<h3 class="hand text-3xl mb-1">Quản lý lớp ${esc(c.name)}</h3>
       <p class="text-xs opacity-70 mb-3">${byOwnerPin?`Lớp hiện do <b>${esc(owner.name)}</b> quản lý. Nhập mã PIN cá nhân của ${esc(owner.name)} để mở khóa Quản lý lớp.`:`Nhập mật khẩu quản trị lớp do người tạo lớp đặt lúc tạo lớp.`}</p>
-      ${field("mp",byOwnerPin?`Mã PIN của ${esc(owner.name)}`:"Mật khẩu quản lý lớp","","password")}
+      ${field("cm-login-pw",byOwnerPin?`Mã PIN của ${esc(owner.name)}`:"Mật khẩu quản lý lớp","","password")}
       <p id="cm-login-err" class="text-sm font-bold mb-2 hidden" style="color:var(--coral)"></p>
-      <button id="ok" type="button" class="btn w-full">Đăng nhập quản lý</button>`);
-    const mpEl=$("#mp"),okBtn=$("#ok"),errEl=$("#cm-login-err");
-    if(byOwnerPin)mpEl?.setAttribute("inputmode","numeric");
-    mpEl?.focus();
+      <button id="cm-login-ok" type="button" class="btn w-full">Đăng nhập quản lý</button>`);
+    const pwEl=$("#cm-login-pw"),okBtn=$("#cm-login-ok"),errEl=$("#cm-login-err");
+    if(byOwnerPin)pwEl?.setAttribute("inputmode","numeric");
+    pwEl?.focus();
     const doLogin=async()=>{
-      const pw=v("mp");
-      if(!pw){errEl.textContent=byOwnerPin?"Vui lòng nhập mã PIN.":"Vui lòng nhập mật khẩu.";errEl.classList.remove("hidden");return}
+      if(okBtn.disabled)return;
+      if(errEl){errEl.textContent="";errEl.classList.add("hidden")}
       const prev=okBtn.innerHTML;okBtn.disabled=true;okBtn.textContent="Đang kiểm tra...";
       try{
+        const pw=(pwEl?.value||"").trim();
+        if(!pw){if(errEl){errEl.textContent=byOwnerPin?"Vui lòng nhập mã PIN.":"Vui lòng nhập mật khẩu.";errEl.classList.remove("hidden")}return}
         const match=byOwnerPin
           ?((owner.pin&&owner.pin===pw)||(owner.pinHash&&owner.pinHash===await sha(pw)))
           :((c.pass&&c.pass===pw)||(c.passHash&&c.passHash===await sha(pw)));
-        if(!match){errEl.textContent=byOwnerPin?"Sai mã PIN cá nhân.":"Sai mật khẩu quản lý lớp.";errEl.classList.remove("hidden");return}
+        if(!match){if(errEl){errEl.textContent=byOwnerPin?"Sai mã PIN cá nhân.":"Sai mật khẩu quản lý lớp.";errEl.classList.remove("hidden")}return}
         if(byOwnerPin){store("me_"+cid,owner.id);sStore("pin_"+owner.id,"1")}
         sStore("mod_"+cid,"1");
         await route();
         ClassManagementModal(cid);
-      }catch(e){toastErr(e?.message||"Lỗi xác thực")}
-      finally{if(okBtn.isConnected){okBtn.disabled=false;okBtn.innerHTML=prev}}
+      }catch(e){
+        if(errEl){errEl.textContent=e?.message||"Lỗi xác thực";errEl.classList.remove("hidden")}
+        toastErr(e?.message||"Lỗi xác thực");
+      }finally{if(okBtn.isConnected){okBtn.disabled=false;okBtn.innerHTML=prev}}
     };
     okBtn.onclick=doLogin;
-    mpEl?.addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();doLogin()}});
+    pwEl?.addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();doLogin()}});
     return;
   }
 
   const l=inviteLink(c);
   const ownerObj=c.ownerMemberId?get("members",c.ownerMemberId):null;
+  const byOwner=!!ownerObj;
   const roleLabel=isClassOwnerMember(c)?`👑 Chủ lớp (${esc(ownerObj?.name||"Thành viên")})`:isClassCreator(c)?"👑 Người tạo lớp":isClassPassAuthed(cid)?"🔑 Quản trị lớp":"🛡 Admin tổng";
   const otherMembers=by("members","classId",cid).filter(m=>m.id!==c.ownerMemberId);
   const delPending=c.deleteReq?.status==="pending";
@@ -1237,6 +1555,15 @@ function ClassManagementModal(cid){
     ${field("ee-music","Link nhạc MP3 riêng (tùy chọn)","https://…/bai-hat.mp3")}
     <p id="cm-err" class="text-sm font-bold text-center mb-2 hidden" style="color:var(--coral)"></p>
     <button id="sv" type="button" class="btn sun w-full mb-4">💾 Lưu thay đổi</button>
+    <div class="card p-3 mb-4" style="box-shadow:none">
+      <div class="text-sm font-bold mb-2">${byOwner?"🔑 Đổi mã PIN quản lý (PIN cá nhân)":"🔑 Đổi mật khẩu quản lý"}</div>
+      ${byOwner?`<p class="text-xs opacity-75 mb-2">Áp dụng cho mã PIN của <b>${esc(ownerObj.name)}</b>.${isAdmin()?" (Admin có thể để trống PIN cũ)":""}</p>`:(isAdmin()?`<p class="text-xs opacity-75 mb-2">Admin có thể để trống mật khẩu hiện tại để đặt lại.</p>`:"")}
+      <label class="block mb-2 text-xs font-bold">${byOwner?"Mã PIN cũ":"Mật khẩu hiện tại"}<input id="cm-old-pw" type="password"${byOwner?` inputmode="numeric" maxlength="6"`:""} class="inp mt-1 font-normal" autocomplete="off"></label>
+      <label class="block mb-2 text-xs font-bold">${byOwner?"Mã PIN mới (4–6 số)":"Mật khẩu mới (≥ 4 ký tự)"}<input id="cm-new-pw" type="password"${byOwner?` inputmode="numeric" maxlength="6"`:""} class="inp mt-1 font-normal" autocomplete="new-password"></label>
+      <label class="block mb-2 text-xs font-bold">${byOwner?"Nhập lại mã PIN mới":"Nhập lại mật khẩu mới"}<input id="cm-new-pw2" type="password"${byOwner?` inputmode="numeric" maxlength="6"`:""} class="inp mt-1 font-normal" autocomplete="new-password"></label>
+      <p id="cm-pw-err" class="text-sm font-bold mb-2 hidden" style="color:var(--coral)"></p>
+      <button id="cm-pw-btn" type="button" class="btn ghost w-full text-sm">${byOwner?"Cập nhật mã PIN":"Cập nhật mật khẩu"}</button>
+    </div>
     <div class="card p-3 mb-4" style="box-shadow:none">
       <div class="text-sm font-bold mb-1">👑 Chuyển quyền quản trị lớp</div>
       ${ownerObj?`<p class="text-xs opacity-75 mb-2">Quản trị viên lớp hiện tại: <b>${esc(ownerObj.name)}</b></p>`:""}
@@ -1295,6 +1622,13 @@ function ClassManagementModal(cid){
     }catch(e){showCmErr(e?.message||"Không thể lưu thay đổi lớp.")}
     finally{if(svBtn.isConnected){svBtn.disabled=false;svBtn.innerHTML=prev}}
   };
+
+  $("#cm-pw-btn")?.addEventListener("click",()=>updateSecretRecord({
+    btn:$("#cm-pw-btn"),errEl:$("#cm-pw-err"),ids:["cm-old-pw","cm-new-pw","cm-new-pw2"],
+    isPin:byOwner,rec:byOwner?ownerObj:c,col:byOwner?"members":"classes",
+    plainKey:byOwner?"pin":"pass",hashKey:byOwner?"pinHash":"passHash",
+    okMsg:byOwner?"Đã đổi mã PIN thành công ✔":"Đã đổi mật khẩu quản lý lớp ✔"
+  }));
 
   $("#cm-transfer-btn")?.addEventListener("click",()=>{
     const targetId=$("#cm-transfer-sel")?.value;
@@ -1486,7 +1820,7 @@ function memberPage(id){const m=get("members",id);if(!m)return"<p>Không tìm th
   const heartBox=allowLikers
     ?`<button type="button" onclick="showMemberLikers('${id}')" class="${badgeCls} cursor-pointer hover:bg-rose-50 transition-colors" title="Xem người đã thả tim">${heartSvg}<span id="member-total-hearts">${totalHearts}</span></button>`
     :`<div class="${badgeCls} cursor-default">${heartSvg}<span id="member-total-hearts">${totalHearts}</span></div>`;
-  return`${crumbs([["Trang chủ","#/"],[c.name,"#/c/"+c.id],[m.name]])}<div class="text-center"><div class="w-28 h-28 rounded-full overflow-hidden mx-auto bg-white border-4 border-white shadow">${m.avatar?`<img loading="lazy" src="${esc(opt(m.avatar,240))}" class="w-full h-full object-cover" alt="${esc(m.name)}">`:""}</div>${head(m.name)}${q?`<div class="max-w-lg mx-auto mt-2 mb-4 px-4 py-3 rounded-2xl bg-white/85 border border-slate-200/80 shadow-sm text-sm text-[var(--ink)] ${qAlign} whitespace-pre-line break-words leading-relaxed">${esc(m.quote)}</div>`:""}</div>
+  return`${crumbs([["Trang chủ","#/"],[c.name,"#/c/"+c.id],[m.name]])}<div class="text-center"><div class="w-28 h-28 rounded-full overflow-hidden mx-auto bg-white border-4 border-white shadow${m.avatar?" cursor-zoom-in transition-transform hover:scale-105":""}" ${m.avatar?`title="Bấm để phóng to ảnh đại diện" onclick="viewMemberAvatar('${id}')"`:""}>${m.avatar?`<img loading="lazy" src="${esc(opt(m.avatar,240))}" class="w-full h-full object-cover" alt="${esc(m.name)}">`:""}</div>${head(m.name)}${q?`<div class="max-w-lg mx-auto mt-2 mb-4 px-4 py-3 rounded-2xl bg-white/85 border border-slate-200/80 shadow-sm text-sm text-[var(--ink)] ${qAlign} whitespace-pre-line break-words leading-relaxed">${esc(m.quote)}</div>`:""}</div>
   ${own?`<div class="flex items-center justify-between gap-1.5 sm:gap-2 mb-3"><button type="button" class="btn ghost !px-2.5 sm:!px-4 !py-2 text-xs sm:text-sm whitespace-nowrap" onclick="editMember('${id}')">✎ Chỉnh sửa hồ sơ</button>${heartBox}<button type="button" id="drop" class="btn sun !px-2.5 sm:!px-4 !py-2 text-xs sm:text-sm whitespace-nowrap inline-flex items-center gap-1" style="border:2px solid transparent" ondragover="event.preventDefault()"><svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8.5 19H7a4.5 4.5 0 0 1-.5-9 6.5 6.5 0 0 1 12.5-1.5A5 5 0 0 1 19 19h-1.5M12 12v9M9 15l3-3 3 3"/></svg><span>＋ Tải ảnh lên album</span></button></div><input id="fi" type="file" multiple accept="image/*" hidden><ul class="kyup-list mb-3" id="up"></ul>`:`<div class="flex items-center justify-between gap-2 mb-3"><button type="button" class="btn ghost text-sm" onclick="pinLogin('${id}')">🔒 Đây là trang của tôi</button>${heartBox}</div>`}
   <div class="grid grid-cols-2 sm:grid-cols-3 gap-4">${ph.map(p=>polaroid(p,own)).join("")||"<p class='col-span-3 text-center'>Chưa có ảnh trong album.</p>"}</div>
   ${isAdmin()?`<button class="btn ghost mt-6" onclick="delItem('members','${id}','${esc(m.name)}')">Xóa trang (Admin)</button>`:""}`}
@@ -1590,10 +1924,20 @@ window.pinLogin=id=>{
   okBtn?.addEventListener("click",verifyPin);
 };
 
-window.editMember=id=>{const m=get("members",id);
+window.editMember=id=>{const m=get("members",id);if(!m)return;
+  const canChangePin=sessionStorage.getItem("pin_"+m.id)==="1"||isAdmin();
   sheet(`<h3 class="hand text-3xl mb-2">Sửa trang cá nhân</h3>${field("e1","Họ và tên")}
   <label class="block mb-3 text-sm font-bold">Ghi chú / trích dẫn<textarea id="e2" class="inp mt-1 font-normal" rows="4" placeholder="Quote: ...\nZalo: ...\nFacebook: ...\nSở thích: ..."></textarea></label>
-  <label class="block mb-3 text-sm font-bold">Đổi ảnh đại diện<input id="e3" type="file" accept="image/*" class="inp mt-1"></label><button id="ok" class="btn w-full">Lưu</button>`);
+  <label class="block mb-3 text-sm font-bold">Đổi ảnh đại diện<input id="e3" type="file" accept="image/*" class="inp mt-1"></label><button id="ok" type="button" class="btn w-full">Lưu</button>
+  ${canChangePin?`<div class="card p-3 mt-4" style="box-shadow:none">
+    <div class="text-sm font-bold mb-2">🔑 Đổi mã PIN cá nhân</div>
+    ${isAdmin()?`<p class="text-xs opacity-75 mb-2">Admin có thể để trống mã PIN hiện tại để đặt lại giúp thành viên.</p>`:""}
+    <label class="block mb-2 text-xs font-bold">Mã PIN hiện tại<input id="em-old-pin" type="password" inputmode="numeric" maxlength="6" class="inp mt-1 font-normal" autocomplete="off"></label>
+    <label class="block mb-2 text-xs font-bold">Mã PIN mới (4–6 số)<input id="em-new-pin" type="password" inputmode="numeric" maxlength="6" class="inp mt-1 font-normal" autocomplete="new-password"></label>
+    <label class="block mb-2 text-xs font-bold">Nhập lại mã PIN mới<input id="em-new-pin2" type="password" inputmode="numeric" maxlength="6" class="inp mt-1 font-normal" autocomplete="new-password"></label>
+    <p id="em-pin-err" class="text-sm font-bold mb-2 hidden" style="color:var(--coral)"></p>
+    <button id="em-pin-btn" type="button" class="btn ghost w-full text-sm">Đổi mã PIN</button>
+  </div>`:""}`);
   $("#e1").value=m.name;document.getElementById("e2").value=m.quote||"";
   $("#ok").onclick=async()=>{const btn=$("#ok"),f=$("#e3").files[0],prev=btn.innerHTML;btn.disabled=true;btn.textContent="Đang lưu...";
     try{
@@ -1602,29 +1946,42 @@ window.editMember=id=>{const m=get("members",id);
       m.avatar=nextAv;m.name=v("e1")||m.name;m.quote=document.getElementById("e2")?.value??m.quote;
       await db.set("members",m);closeSheet();toast("Đã lưu hồ sơ ✔");route();
     }catch(e){toastErr(e?.message||"Không thể lưu hồ sơ")}
-    finally{if(btn.isConnected){btn.disabled=false;btn.innerHTML=prev}}}};
+    finally{if(btn.isConnected){btn.disabled=false;btn.innerHTML=prev}}};
+  $("#em-pin-btn")?.addEventListener("click",()=>updateSecretRecord({
+    btn:$("#em-pin-btn"),errEl:$("#em-pin-err"),ids:["em-old-pin","em-new-pin","em-new-pin2"],
+    isPin:true,rec:m,col:"members",plainKey:"pin",hashKey:"pinHash",okMsg:"Đã đổi mã PIN cá nhân ✔"
+  }));};
 
 /* ============ ADMIN ============ */
 function adminPage(){
   if(!isAdmin())return`${crumbs([["Trang chủ","#/"],["Admin"]])}${head("Quản trị")}<div class="card p-4">${field("ap","Mật khẩu Admin","","password")}<button class="btn w-full" onclick="adLogin()">Đăng nhập</button></div>`;
-  const used=Math.min(100,Math.round(S.photos.length*1.2));
+  const photosCount=S.photos.length;
+  const avatarsCount=S.members.filter(m=>!!(m.avatar&&String(m.avatar).trim())).length;
+  const coversCount=S.schools.filter(s=>!!(s.cover&&String(s.cover).trim())).length+S.classes.filter(c=>!!(c.cover&&String(c.cover).trim())).length;
+  const photosMB=photosCount*1.5,coversMB=coversCount*1,avatarsMB=avatarsCount*0.5;
+  const totalMB=photosMB+coversMB+avatarsMB;
+  const usedPct=Math.min(100,(totalMB/25600)*100);
+  const pPct=Math.min(100,(photosMB/25600)*100),cPct=Math.min(100,(coversMB/25600)*100),aPct=Math.min(100,(avatarsMB/25600)*100);
+  const totalStr=totalMB>=1024?(totalMB/1024).toFixed(2)+" GB":totalMB.toFixed(1)+" MB";
+  const pctStr=usedPct<0.1&&totalMB>0?"<0.1":usedPct.toFixed(1);
   // #472 – Storage bar
   const storageBar=`
-  <p class="text-sm font-bold mb-1">Dung lượng ước tính (${used}% / 25GB gói Cloudinary Free)</p>
+  <p class="text-sm font-bold mb-1">Dung lượng ước tính: ~${totalStr} / 25 GB (${pctStr}%)</p>
   <div class="kyst-bar" id="kyst">
-    <span class="kyst-seg" data-k="photos" style="--w:${Math.round(used*0.5)}%;background:#ff5d73" title="Ảnh"></span>
-    <span class="kyst-seg" data-k="videos" style="--w:${Math.round(used*0.3)}%;background:#ffd23f" title="Video"></span>
-    <span class="kyst-seg" data-k="other" style="--w:${Math.round(used*0.2)}%;background:#1d2a4a" title="Khác"></span>
-    <span class="kyst-seg" style="background:rgba(29,42,74,.08)" title="Trống"></span>
+    <span class="kyst-seg" data-k="photos" data-has="${photosMB>0?1:0}" style="--w:${pPct.toFixed(3)}%;background:#ff5d73" title="Ảnh album: ${photosMB.toFixed(1)} MB (${photosCount} ảnh)"></span>
+    <span class="kyst-seg" data-k="covers" data-has="${coversMB>0?1:0}" style="--w:${cPct.toFixed(3)}%;background:#ffd23f" title="Ảnh bìa: ${coversMB.toFixed(1)} MB (${coversCount} ảnh)"></span>
+    <span class="kyst-seg" data-k="avatars" data-has="${avatarsMB>0?1:0}" style="--w:${aPct.toFixed(3)}%;background:#1d2a4a" title="Avatar: ${avatarsMB.toFixed(1)} MB (${avatarsCount} ảnh)"></span>
+    <span class="kyst-seg" style="background:rgba(29,42,74,.08)" title="Trống: ${(100-usedPct).toFixed(1)}%"></span>
   </div>
   <div class="kyst-legend">
-    <span class="kyst-item"><i style="background:#ff5d73"></i>Ảnh ${Math.round(used*0.5)}%</span>
-    <span class="kyst-item"><i style="background:#ffd23f"></i>Video ${Math.round(used*0.3)}%</span>
-    <span class="kyst-item"><i style="background:#1d2a4a"></i>Khác ${Math.round(used*0.2)}%</span>
-    <span class="kyst-item"><i style="background:rgba(29,42,74,.18);border:1px solid rgba(29,42,74,.2)"></i>Trống ${100-used}%</span>
-  </div>`;
+    <span class="kyst-item"><i style="background:#ff5d73"></i>Ảnh album: ${photosMB.toFixed(1)} MB</span>
+    <span class="kyst-item"><i style="background:#ffd23f"></i>Ảnh bìa: ${coversMB.toFixed(1)} MB</span>
+    <span class="kyst-item"><i style="background:#1d2a4a"></i>Avatar: ${avatarsMB.toFixed(1)} MB</span>
+    <span class="kyst-item"><i style="background:rgba(29,42,74,.18);border:1px solid rgba(29,42,74,.2)"></i>Trống: ${(100-usedPct).toFixed(1)}%</span>
+  </div>
+  <p class="text-[11px] opacity-65 mt-1.5">Video nhúng (${S.videos.length} link YouTube/Drive/TikTok) không tính vào dung lượng Cloudinary.</p>`;
   return`${crumbs([["Trang chủ","#/"],["Admin"]])}${head("Bảng điều khiển")}
-  <div class="grid grid-cols-2 gap-3 mb-4">${[["Trường",S.schools.length],["Lớp",S.classes.length],["Thành viên",S.members.length],["Ảnh",S.photos.length]].map(([l,n])=>`<div class="card p-3 text-center"><div class="hand text-5xl" data-n="${n}">0</div>${l}</div>`).join("")}</div>
+  <div class="grid grid-cols-2 gap-3 mb-4">${[["Trường",S.schools.length],["Lớp",S.classes.length],["Thành viên",S.members.length],["Ảnh",S.photos.length]].map(([l,n])=>`<div class="card p-3 text-center"><div class="hand text-5xl" data-n="${n}">${n}</div>${l}</div>`).join("")}</div>
   <div class="card p-3 mb-4">${storageBar}</div>
   <div class="card p-3 mb-4"><b>Giới hạn lớp / thiết bị</b><div class="flex gap-2 mt-2"><input id="lim" type="number" min="1" class="inp" value="${cfg().limit}"><button class="btn" onclick="setLim()">Lưu</button></div><button class="btn ghost text-sm mt-2" onclick="resetDev()">Mở khóa thiết bị này</button></div>
   <div class="card p-3 mb-4"><b>Trường học</b>${S.schools.map(s=>`<div class="flex justify-between py-1"><span>${esc(s.name)}</span><span><button class="underline text-sm" onclick="editSchool('${s.id}')">sửa</button> <button class="underline text-sm" onclick="delSchool('${s.id}')">xóa</button></span></div>`).join("")}<button class="btn sun mt-2" onclick="editSchool()">＋ Thêm trường</button></div>
@@ -1633,12 +1990,12 @@ function adminPage(){
 
 // Animate storage bar on render
 function initStorageBar(){
-  const segs=$$(".kyst-seg");if(!segs.length)return;
-  setTimeout(()=>segs.forEach(s=>{if(s.style.getPropertyValue("--w"))s.classList.add("loaded")}),100);
+  const segs=$$(".kyst-seg");
+  if(segs.length)setTimeout(()=>segs.forEach(s=>{if(s.style.getPropertyValue("--w"))s.classList.add("loaded")}),60);
   countUp();
 }
 window.confirmDel=confirmDel;window.db=db;
-window.adLogin=()=>{if(v("ap")===CONFIG.adminPass){sessionStorage.setItem("ky_admin","1");route()}else toast("Sai mật khẩu")};
+window.adLogin=()=>{if(v("ap")===CONFIG.adminPass){sessionStorage.setItem("ky_admin","1");window.route()}else toast("Sai mật khẩu")};
 window.setLim=async()=>{const c=cfg();c.limit=Math.max(1,+v("lim")||1);await db.set("settings",c);toast("Đã lưu")};
 window.resetDev=async()=>{const c=cfg();c.resets=[...(c.resets||[]),fp];await db.set("settings",c);toast("Đã mở khóa")};
 window.editSchool=id=>{const s=id?get("schools",id):{id:uid(),name:"",cover:""};sheet(`<h3 class="hand text-3xl mb-2">${id?"Sửa":"Thêm"} trường</h3>${field("sn","Tên trường")}<label class="block mb-3 text-sm font-bold">Logo / ảnh bìa<input id="sc" type="file" accept="image/*" class="inp mt-1"></label><button id="ok" class="btn w-full">Lưu</button>`);$("#sn").value=s.name;
@@ -1651,12 +2008,9 @@ window.editSchool=id=>{const s=id?get("schools",id):{id:uid(),name:"",cover:""};
     }catch(e){toastErr(e?.message||"Không thể lưu trường")}
     finally{if(btn.isConnected){btn.disabled=false;btn.innerHTML=prev}}}};
 
-/* Hook vào route để init storage bar và fan */
-const _origRoute=route;
+/* Hook vào route */
 window.route=async function(){
-  await _origRoute();
-  if(location.hash===""||location.hash==="#/"||location.hash==="#"){initFan()}
-  if(location.hash.includes("admin"))initStorageBar();
+  await route();
   checkPendingDeleteVote();
 };
 
@@ -1665,8 +2019,8 @@ await db.load();
 const q=new URLSearchParams(location.search);
 if(q.get("lop")&&get("classes",q.get("lop"))){
   const cid=q.get("lop"),code=q.get("code")||"";
-  history.replaceState(null,"",location.pathname+"#/c/"+cid);tab=1;await route();
+  history.replaceState(null,"",location.pathname+"#/c/"+cid);tab=1;await window.route();
   if(code&&String(get("classes",cid)?.code??"").trim()===String(code).trim()){saveClassAuth(cid,code);$("#class-auth-badge")?.classList.remove("hidden")}
   setTimeout(()=>newMember(cid,code),400);
-} else route();
+} else window.route();
 </script></body></html>
